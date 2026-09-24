@@ -18,39 +18,63 @@ PATCH_METHOD = '''    def _parse_patch_chunk(self, data: Dict[str, Any]) -> Opti
         """Parse DeepSeek's current JSON-Patch style stream event."""
         path = data.get("p", "")
         value = data.get("v")
-
-        # Initial message snapshot: nothing to stream.
-        if isinstance(value, dict):
-            return None
+        operation = str(data.get("o", "")).upper()
 
         # Completion signal.
         if "status" in path and value == "FINISHED":
             return {"content": "", "type": "text", "finish_reason": "stop"}
 
-        # Text deltas may omit the path after the first content event.
-        if path.endswith("/content") or (
-            "/content" in self._last_patch_path and not path
-        ):
-            self._last_patch_path = path or self._last_patch_path
-            if isinstance(value, str) and value:
-                return {"content": value, "type": "text", "finish_reason": None}
-            return None
-
-        # Thinking deltas are kept separate so bot.py can discard them.
-        if "thinking_content" in path or (
+        is_thinking = "thinking_content" in path or (
             "thinking_content" in self._last_patch_path and not path
-        ):
+        )
+        is_content = path.endswith("/content") or (
+            "/content" in self._last_patch_path and not path
+        )
+
+        # A snapshot can contain the beginning of the answer. Keep it instead
+        # of discarding it; otherwise the first character/word may disappear.
+        if isinstance(value, dict):
+            response = value.get("response")
+            snapshot = response.get("content") if isinstance(response, dict) else None
+            if snapshot is None:
+                snapshot = value.get("content")
+            if isinstance(snapshot, str):
+                state_name = "_patch_thinking" if is_thinking else "_patch_content"
+                previous = getattr(self, state_name)
+                setattr(self, state_name, snapshot)
+                delta = snapshot[len(previous):] if snapshot.startswith(previous) else snapshot
+                if delta:
+                    return {
+                        "content": delta,
+                        "type": "thinking" if is_thinking else "text",
+                        "finish_reason": None,
+                    }
             self._last_patch_path = path or self._last_patch_path
-            if isinstance(value, str) and value:
-                return {
-                    "content": value,
-                    "type": "thinking",
-                    "finish_reason": None,
-                }
             return None
 
-        self._last_patch_path = path
-        return None
+        if not isinstance(value, str) or not (is_content or is_thinking):
+            self._last_patch_path = path or self._last_patch_path
+            return None
+
+        state_name = "_patch_thinking" if is_thinking else "_patch_content"
+        previous = getattr(self, state_name)
+        if operation in {"SET", "REPLACE"}:
+            updated = value
+        else:
+            # APPEND is the normal operation. Missing operation is treated as
+            # APPEND for compatibility with observed DeepSeek events.
+            updated = previous + value
+
+        setattr(self, state_name, updated)
+        self._last_patch_path = path or self._last_patch_path
+        delta = updated[len(previous):] if updated.startswith(previous) else updated
+        if not delta:
+            return None
+        return {
+            "content": delta,
+            "type": "thinking" if is_thinking else "text",
+            "finish_reason": None,
+        }
 '''
 
 
@@ -70,7 +94,10 @@ def main() -> None:
         raise SystemExit("Unbekannte dsk/api.py-Version: Init-Anker fehlt.")
     text = text.replace(
         init_anchor,
-        init_anchor + "        self._last_patch_path = ''\n",
+        init_anchor
+        + "        self._last_patch_path = ''\n"
+        + "        self._patch_content = ''\n"
+        + "        self._patch_thinking = ''\n",
         1,
     )
 
