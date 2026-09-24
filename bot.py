@@ -23,6 +23,7 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.constants import ChatAction
+from telegram.error import NetworkError as TelegramNetworkError
 from telegram.error import TelegramError
 from telegram.ext import (
     Application,
@@ -495,6 +496,16 @@ async def telegram_error_handler(
     update: object, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """Letzte Fehler-Fallbacks für Updates, die außerhalb eines Handlers auftreten."""
+    if isinstance(context.error, TelegramNetworkError):
+        # python-telegram-bot wiederholt Polling-Requests bereits selbst. Ein
+        # 502/temporärer Gateway-Fehler ist deshalb kein Bot-Crash und braucht
+        # keinen kompletten Traceback im Journal.
+        LOGGER.warning(
+            "Telegram-API vorübergehend nicht erreichbar (%s); Polling wird automatisch wiederholt.",
+            context.error,
+        )
+        return
+
     LOGGER.error("Unbehandelter Telegram-Fehler: %s", context.error, exc_info=context.error)
 
 
