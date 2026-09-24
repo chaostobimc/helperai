@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -83,6 +84,34 @@ TELEGRAM_MAX_MESSAGE_LENGTH = 4_000
 TYPING_REFRESH_SECONDS = 4
 DEFAULT_ALLOWED_USER_ID = 8_860_332_682
 DEFAULT_TIMEOUT_SECONDS = 180.0
+
+# dsk bietet keinen separaten system-Prompt an. Diese Vorgabe wird deshalb
+# jedem Nutzerprompt vorangestellt. Die nachgelagerte Plain-Text-Bereinigung
+# ist eine zusätzliche Sicherung für die Smartwatch-Ausgabe.
+ASSISTANT_INSTRUCTION = (
+    "Du bist mein persönlicher Assistent. Antworte direkt, kurz und sachlich. "
+    "Antworte in der Sprache der Nutzerfrage. Verwende ausschließlich reinen "
+    "Text ohne Markdown oder andere Formatierungen: keine Sternchen, "
+    "Backticks, Überschriften, Aufzählungszeichen oder Emojis. Keine langen "
+    "Einleitungen und keine unnötigen Wiederholungen."
+)
+
+EMOJI_RE = re.compile(
+    "["
+    "\\U0001F1E0-\\U0001F1FF"
+    "\\U0001F300-\\U0001F5FF"
+    "\\U0001F600-\\U0001F64F"
+    "\\U0001F680-\\U0001F6FF"
+    "\\U0001F700-\\U0001F77F"
+    "\\U0001F780-\\U0001F7FF"
+    "\\U0001F800-\\U0001F8FF"
+    "\\U0001F900-\\U0001F9FF"
+    "\\U0001FA00-\\U0001FAFF"
+    "\\u2600-\\u26FF"
+    "\\u2700-\\u27BF"
+    "\\uFE0F\\u200D"
+    "]+"
+)
 
 
 @dataclass(frozen=True)
@@ -389,6 +418,36 @@ def split_for_telegram(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH)
     return parts
 
 
+def build_assistant_prompt(user_prompt: str) -> str:
+    """Fügt die dauerhafte Smartwatch-Ausgabevorgabe zum Nutzerprompt hinzu."""
+    return f"{ASSISTANT_INSTRUCTION}\n\nNutzerfrage:\n{user_prompt}\n\nAntworte jetzt direkt."
+
+
+def plain_text_response(text: str) -> str:
+    """Entfernt Markdown-Reste, Listenformatierung und Emojis aus Antworten."""
+    # Links behalten ihren sichtbaren Text, die URL selbst wird entfernt.
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Codeblöcke, Inline-Code, Fettdruck, Kursiv-/Durchstreich-Markup.
+    text = re.sub(r"```(?:[A-Za-z0-9_+-]+)?", "", text)
+    text = text.replace("**", "").replace("__", "")
+    text = text.replace("`", "").replace("~~", "")
+
+    # Markdown-Überschriften, Zitate, Aufzählungen und nummerierte Listen.
+    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*>\s?", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+[.)]\s+", "", text, flags=re.MULTILINE)
+
+    # Emojis und Zero-Width-Joiner entfernen; normale deutsche Satzzeichen
+    # bleiben erhalten.
+    text = EMOJI_RE.sub("", text)
+
+    # Für die Uhr eine gut lesbare reine Textzeile liefern.
+    return re.sub(r"\s+", " ", text).strip()
+
+
 async def keep_typing(bot: Any, telegram_chat_id: int) -> None:
     """Hält den Telegram-Status während der DeepSeek-Generierung aktiv."""
     try:
@@ -471,13 +530,16 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if message is None or chat is None or not message.text:
         return
 
-    prompt = message.text.strip()
-    if not prompt:
+    user_prompt = message.text.strip()
+    if not user_prompt:
         return
 
+    prompt = build_assistant_prompt(user_prompt)
     typing_task = asyncio.create_task(keep_typing(context.bot, chat.id))
     try:
-        answer = await assistant_from_context(context).complete(prompt)
+        answer = plain_text_response(
+            await assistant_from_context(context).complete(prompt)
+        )
         if not answer:
             await message.reply_text("DeepSeek hat eine leere Antwort geliefert. Bitte erneut versuchen.")
             return

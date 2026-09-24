@@ -85,6 +85,19 @@ def main() -> None:
         1,
     )
 
+    stream_anchor = "            if chunk.startswith(b'data: '):\n                data = json.loads(chunk[6:])\n"
+    if stream_anchor not in text:
+        raise SystemExit("Unbekannte dsk/api.py-Version: SSE-Anker fehlt.")
+    # SSE erlaubt sowohl "data: {...}" als auch "data:{...}". Der erste
+    # Chunk kommt bei DeepSeek gelegentlich ohne Leerzeichen und würde sonst
+    # genau das erste Wort der Antwort verschlucken.
+    text = text.replace(
+        stream_anchor,
+        "            if chunk.startswith(b'data:'):\n"
+        "                data = json.loads(chunk[5:].lstrip())\n",
+        1,
+    )
+
     method_anchor = "    def _parse_chunk(self, chunk: bytes) -> Optional[Dict[str, Any]]:\n"
     if method_anchor not in text:
         raise SystemExit("Unbekannte dsk/api.py-Version: Methoden-Anker fehlt.")
