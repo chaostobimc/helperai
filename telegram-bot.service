@@ -1,0 +1,29 @@
+[Unit]
+Description=Persönlicher Telegram-DeepSeek-Assistent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/telegram-deepseek-bot
+EnvironmentFile=/opt/telegram-deepseek-bot/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/telegram-deepseek-bot/.venv/bin/python /opt/telegram-deepseek-bot/bot.py
+
+# Nach einem Fehler automatisch neu starten.
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+# Grundlegende Härtung; die Session-Datei und DeepSeek-Cookies bleiben im Projekt lesbar.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/telegram-deepseek-bot/data /opt/telegram-deepseek-bot/vendor/deepseek4free/dsk
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

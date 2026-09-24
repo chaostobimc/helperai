@@ -1,0 +1,17 @@
+# Telegram-Framework mit async/await (v20+)
+python-telegram-bot>=20.0,<22.0
+
+# Liest die .env-Konfiguration
+python-dotenv>=1.0,<2.0
+
+# dsk importiert pkg_resources; setuptools wird deshalb explizit installiert.
+setuptools>=69,<81
+
+# Gewünschte Upstream-Quelle für das Paket dsk:
+# git+https://github.com/xtekky/deepseek4free.git
+#
+# Hinweis: xtekky/deepseek4free ist aktuell source-only und enthält kein
+# setup.py/pyproject.toml. Daher kann pip diese VCS-Zeile derzeit nicht direkt
+# als installierbares Paket behandeln. install.sh klont exakt dieses Repository
+# nach vendor/deepseek4free und installiert dessen requirements.txt; bot.py
+# bindet den dsk-Quellcode anschließend automatisch ein.

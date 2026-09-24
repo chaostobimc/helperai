@@ -1,0 +1,18 @@
+# Secrets niemals in das Image kopieren
+.env
+
+# Git, lokale virtuelle Umgebungen und Runtime-Daten
+.git
+.gitignore
+.venv
+vendor
+data/*
+!data/.gitkeep
+
+# Python-Caches und lokale Dateien
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.log

@@ -1,0 +1,23 @@
+# Secrets and local configuration
+.env
+
+# Runtime/session data
+/data/*
+!/data/.gitkeep
+
+# Local Python environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Source checkout and generated browser cookies of deepseek4free
+/vendor/
+
+# Logs and local editor files
+*.log
+.DS_Store
+.vscode/
+.idea/

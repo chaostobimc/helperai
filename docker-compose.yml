@@ -1,0 +1,19 @@
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: telegram-deepseek-bot:local
+    container_name: telegram-deepseek-bot
+    restart: unless-stopped
+    init: true
+    environment:
+      # Wird vom dsk-Cloudflare-Bypass für Chromium + Xvfb benötigt.
+      DOCKERMODE: "true"
+    env_file:
+      - .env
+    volumes:
+      # DeepSeek-Session bleibt beim Container-Neubau erhalten.
+      - ./data:/app/data
+      # Optionaler Cloudflare-Cookie-Cache des dsk-Clients.
+      - ./data/deepseek-cookies.json:/app/vendor/deepseek4free/dsk/cookies.json
